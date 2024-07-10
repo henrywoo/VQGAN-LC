@@ -145,15 +145,18 @@ class MyDSINE1KV2(ImageLabelDataSet):
         self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
     def __getitem__(self, idx):
         item = self.dataset[idx]
-        img = item[self.img_key]
-        clip_image = self.clip_preprocessing(img)
-        if not img.mode == "RGB":
-            img = img.convert("RGB")
-        img = np.array(img).astype(np.uint8)
+        img_ori = item[self.img_key]
+        clip_image = self.clip_preprocessing(img_ori)
+        if not img_ori.mode == "RGB":
+            img_ori = img_ori.convert("RGB")
+        img = np.array(img_ori).astype(np.uint8)
         image = self.preprocessor(image=img)["image"]
         image = (image / 127.5 - 1.0).astype(np.float32)
         image = image.transpose(2, 0, 1)
-        return [image, clip_image, 0]
+        img_ori_ = self.handle_pil_image(img_ori)
+        t = self.to_tensor_transform(img_ori_)
+        img_ori_tensor = self.resize_transform(t)
+        return [image, clip_image, img_ori_tensor]
 
 
 class ImageNetDataset(Dataset):
@@ -372,7 +375,7 @@ def main(args):
             data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="val", device=device
         )'''
         model, preprocess_ = clip.load("ViT-L/14", device=DEVICE)
-        dataset_val = get_cv_dataset(path=DS_PATH_IMAGENET1K,
+        dataset_val = get_cv_dataset(path=DS_PATH_OXFLOWER_7K,  # DS_PATH_IMAGENET1K,
                             transform=preprocess_,
                             image_size=args.image_size,
                             batch_size=args.batch_size,
@@ -447,17 +450,18 @@ def main(args):
 
     #clip_score_computer = pyiqa.create_metric('clipscore', device=device)
     recons_save_dir = os.path.join(args.output_dir, "recons")
+    origin_save_dir = os.path.join(args.output_dir, "origin")
     os.makedirs(recons_save_dir, exist_ok=True)
+    os.makedirs(origin_save_dir, exist_ok=True)
     
     count = 0
-    for data_iter_step, [images, clip_image, label_cls] in enumerate(
+    for data_iter_step, [images, clip_image, img_ori] in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):
         ####Tokenizer with VQ-GAN
         b = images.shape[0]
         x = images.to(device)
         clip_image = clip_image.to(device)
-        label_cls = label_cls.to(device)
 
         with torch.no_grad():
             _, _, _, _, _, tk_labels, xrec = model(x, clip_image.to(device), data_iter_step, step=0, is_val=True)
@@ -511,7 +515,13 @@ def main(args):
         torch.cuda.synchronize()
         
         for b in range(0, save_x.shape[0]):
-            plt.imsave(os.path.join(recons_save_dir, "%s.png"%(count)), np.uint8(save_xrec[b].detach().cpu().numpy().transpose(1, 2, 0) * 255))
+            p = os.path.join(recons_save_dir, "%s.png"%(count))
+            t = save_xrec[b].detach().cpu().numpy().transpose(1, 2, 0)
+            plt.imsave(p, np.uint8(t * 255))
+
+            p = os.path.join(origin_save_dir, "%s.png"%(count))
+            t = img_ori[b].detach().cpu().numpy().transpose(1, 2, 0)
+            plt.imsave(p, np.uint8(t * 255))
             count = count + 1
             
     ####
@@ -520,7 +530,7 @@ def main(args):
     ####FID Score
     print ("Calculating FID Score...")
     from cleanfid import fid
-    fid_value = fid.compute_fid(recons_save_dir, args.imagenet_path + "/val", mode="clean")
+    fid_value = fid.compute_fid(recons_save_dir, origin_save_dir, mode="clean")
 
     metric_logger.synchronize_between_processes()
     

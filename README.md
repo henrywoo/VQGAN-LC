@@ -110,9 +110,9 @@ Training GPT with VQGAN-LC tokenizer (GPT-LC) for class-conditional image genera
 
 ```bash
 cd vqgan-gpt-lc
-imagenet_path="IMAGENET PATH"
-codebook_path="INIT CODEBOOK PATH"
-vq_path="VQGAN-LC PATH"
+imagenet_path="IMAGENET"
+codebook_path="mbin/codebook-100K.pth"
+vq_path="mbin/vqgan-lc-100K-f16-dim8.pth"
 torchrun --nproc_per_node 1 training_gpt.py \
     --batch_size 1024 \
     --image_size 256 \
@@ -130,7 +130,7 @@ torchrun --nproc_per_node 1 training_gpt.py \
     --embed_dim 8 \
     --output_dir "train_logs_gpt/gpt_lc_100K" \
     --deepspeed \
-    --deepspeed_config "config/deepspeed_gpt_zero2_small.json" \
+    --deepspeed_config "vqgan-gpt-lc/config/deepspeed_gpt_zero2_small.json" \
     --gpt_type "small"
 
 ```
@@ -143,10 +143,10 @@ Evaluating the FID score of 50K generated images with GPT-LC:
 
 ```bash
 cd vqgan-gpt-lc
-imagenet_path="IMAGENET PATH"
-codebook_path="INIT CODEBOOK PATH"
-vq_path="VQGAN-LC PATH"
-gpt_path="GPT-LC PATH"
+imagenet_path="IMAGENET_PATH"
+codebook_path="mbin/codebook-100K.pth"
+vq_path="mbin/vqgan-lc-100K-f16-dim8.pth"
+gpt_path="mbin/gpt-lc-100K-f16.pth"
 torchrun --nproc_per_node 1 eval_generation.py \
     --batch_size 50 \
     --image_size 256 \
@@ -155,9 +155,9 @@ torchrun --nproc_per_node 1 eval_generation.py \
     --n_class 1000 \
     --imagenet_path $imagenet_path \
     --num_workers 8 \
-    --vq_config_path vqgan_configs/vq-f16.yaml \
+    --vq_config_path vqgan-gpt-lc/vqgan_configs/vq-f16.yaml \
     --output_dir "log_eval_gpt/gpt_lc_100K_f16" \
-    --local_embedding_path $imagenet_path \
+    --local_embedding_path $codebook_path \
     --stage_1_ckpt $vq_path \
     --stage_2_ckpt $gpt_path \
     --n_vision_words 100000 \
