@@ -212,6 +212,7 @@ def save_on_master(*args, **kwargs):
     if is_main_process():
         torch.save(*args, **kwargs)
 
+from hiq import random_port
 
 def init_distributed_mode(args):
     if args.dist_on_itp:
@@ -230,6 +231,10 @@ def init_distributed_mode(args):
     elif 'SLURM_PROCID' in os.environ:
         args.rank = int(os.environ['SLURM_PROCID'])
         args.gpu = args.rank % torch.cuda.device_count()
+    elif args.distributed and torch.cuda.device_count() == 1:
+        args.rank = 0
+        args.world_size = 1
+        args.gpu = 0
     else:
         print('Not using distributed mode')
         setup_for_distributed(is_master=True)  # hack
@@ -242,6 +247,8 @@ def init_distributed_mode(args):
     args.dist_backend = 'nccl'
     print('| distributed init (rank {}): {}, gpu {}'.format(
         args.rank, args.dist_url, args.gpu), flush=True)
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
+    os.environ['MASTER_PORT'] = str(random_port())
     torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()

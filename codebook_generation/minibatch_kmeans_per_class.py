@@ -62,7 +62,9 @@ for i in select_classes[args.start:args.end]:
     if os.path.exists(os.path.join(save_path, "class_center_%d_%d.npy"%(count, class_label))):
         continue
     print(count, ", Processing:", class_label, "Loading")
-    dir_path = os.path.join(args.imagenet_feature_path, imagenet_dict[str(np.int64(class_label))][0])
+    t = imagenet_dict[str(np.int64(class_label))]
+    t = '/'.join(t)
+    dir_path = os.path.join(args.imagenet_feature_path, t)
     files = os.listdir(dir_path)
     #features = []
     #for file in files:
@@ -76,7 +78,7 @@ for i in select_classes[args.start:args.end]:
     print(features.shape)
 
     print(count, ", Processing:", class_label, "Clustering")
-    features = features.reshape(-1, 768)
+    features = features.reshape(-1, 768).permute(1, 0)
     #x = torch.from_numpy(features)
     label, center  = kmeans(X=features, num_clusters=k, device=torch.device('cuda:0'))
     np.save(os.path.join(save_path, "class_center_%d_%d.npy"%(count, class_label)), center.data)

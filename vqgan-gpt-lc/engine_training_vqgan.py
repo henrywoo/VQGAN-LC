@@ -7,7 +7,7 @@ import util.lr_sched as lr_sched
 import util.misc as misc
 import copy
 import numpy as np
-import mlflow
+#import mlflow
 from einops import rearrange
 import matplotlib.pyplot as plt
 import os
@@ -44,9 +44,7 @@ def train_one_epoch(
 
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
-    for data_iter_step, [image_ids, images, clip_images, label_cls] in enumerate(
-        metric_logger.log_every(data_loader, print_freq, header)
-    ):
+    for data_iter_step, [image_ids, images, clip_images, label_cls] in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
     #for data_iter_step, images in enumerate(data_loader):
 
         cur_iter = len(data_loader) * epoch + data_iter_step

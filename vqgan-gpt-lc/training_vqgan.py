@@ -13,13 +13,14 @@ from torch.utils.tensorboard import SummaryWriter
 from PIL import Image
 import yaml
 import torch
-import clip
+from codebook_generation.clip_encoder import clip
 from omegaconf import OmegaConf
 
 from models.models_vq import VQModel 
 from engine_training_vqgan import train_one_epoch
 import util.misc as misc
-
+from hiq.cv_torch import *
+from hiq import print_model
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
 
@@ -75,6 +76,29 @@ def load_vqgan(config, ckpt_path=None, is_gumbel=False):
 def preprocess_vqgan(x):
   x = 2.*x - 1.
   return x
+
+
+from hiq.cv_torch import ImageLabelDataSet
+
+class MyDSINE1K(ImageLabelDataSet):
+    def __init__(self, dataset, transform=None, return_type='pair', split='train', image_size=224, convert_rgb=True,
+                 img_key=None):
+        super().__init__(dataset, transform, return_type, split, image_size, convert_rgb, img_key)
+        self.clip_preprocessing = transform
+        self.rescaler = albumentations.SmallestMaxSize(max_size=image_size)
+        self.cropper = albumentations.RandomCrop(height=image_size, width=image_size)
+        self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        img = item[self.img_key]
+        clip_image = self.clip_preprocessing(img)
+        if not img.mode == "RGB":
+            img = img.convert("RGB")
+        img = np.array(img).astype(np.uint8)
+        image = self.preprocessor(image=img)["image"]
+        image = (image / 127.5 - 1.0).astype(np.float32)
+        image = image.transpose(2, 0, 1)
+        return [[], image, clip_image, 0]
 
 
 class ImageNetDataset(Dataset):
@@ -237,6 +261,7 @@ def get_args_parser():
     parser.set_defaults(pin_mem=True)
 
     # distributed training parameters
+    parser.add_argument("--distributed", default=1, type=int)
     parser.add_argument("--world_size", default=1, type=int, help="number of distributed processes")
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--dist_on_itp", action="store_true")
@@ -285,13 +310,22 @@ def main(args):
     cudnn.benchmark = True
 
     if args.dataset == "imagenet":
+
+        model, preprocess_ = clip.load("ViT-L/14", device=DEVICE)
+        dl = get_cv_dataset(path=DS_PATH_IMAGENET1K,
+                            transform=preprocess_,
+                            image_size=args.image_size,
+                            batch_size=args.batch_size,
+                            return_loader=False,
+                            datasetclass=MyDSINE1K)
+        dataset_train, dataset_val = dl['train'], dl['validation']
         print("ImageNet Dataset")
-        dataset_train = ImageNetDataset(
+        '''dataset_train = ImageNetDataset(
             data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="train", device=device
         )
         dataset_val = ImageNetDataset(
             data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="val", device=device
-        )
+        )'''
     else:
         print("FFHQ Dataset")
         dataset_train = FFHQDataset(
@@ -301,7 +335,7 @@ def main(args):
             data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="val", device=device
         )
 
-    if True:  # args.distributed:
+    if args.distributed:
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
         sampler_train = torch.utils.data.DistributedSampler(
@@ -345,6 +379,7 @@ def main(args):
 
     model = VQModel(args=args, **config.model.params)
     model.to(device)
+    print_model(model)
     model_without_ddp = model
     
 
@@ -401,7 +436,7 @@ def main(args):
     optimizer = [opt_ae, opt_dist]
     loss_scaler = [loss_scaler_ae, loss_scaler_disc]
 
-    num_val_images = len(dataset_val.image_ids)
+    #num_val_images = len(dataset_val.image_ids)
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()

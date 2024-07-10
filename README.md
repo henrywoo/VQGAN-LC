@@ -60,7 +60,7 @@ torchrun --nproc_per_node 8 training_vqgan.py \
     --n_class 1000 \
     --imagenet_path $imagenet_path \
     --num_workers 16 \
-    --vq_config_path vqgan_configs/vq-f16.yaml \
+    --vq_config_path vqgan-gpt-lv/vqgan_configs/vq-f16.yaml \
     --output_dir "train_logs_vq/vqgan_lc_100K" \
     --log_dir "train_logs_vq/vqgan_lc_100K" \
     --disc_start 50000 \
