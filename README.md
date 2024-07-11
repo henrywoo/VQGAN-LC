@@ -129,9 +129,10 @@ torchrun --nproc_per_node 1 training_gpt.py \
     --use_cblinear 1 \
     --embed_dim 8 \
     --output_dir "train_logs_gpt/gpt_lc_100K" \
+    --gpt_type "small" \
     --deepspeed \
     --deepspeed_config "vqgan-gpt-lc/config/deepspeed_gpt_zero2_small.json" \
-    --gpt_type "small"
+
 
 ```
 

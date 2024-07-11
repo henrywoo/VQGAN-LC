@@ -101,6 +101,25 @@ class ImageNetDataset(Dataset):
 
         return [image_ids, image, label]
 
+from hiq.cv_torch import ImageLabelDataSet
+class MyDSINE1KForGPT(ImageLabelDataSet):
+    def __init__(self, dataset, transform=None, return_type='pair', split='train', image_size=224, convert_rgb=True,
+                 img_key=None):
+        super().__init__(dataset, transform, return_type, split, image_size, convert_rgb, img_key)
+        self.rescaler = albumentations.SmallestMaxSize(max_size=image_size)
+        self.cropper = albumentations.RandomCrop(height=image_size, width=image_size)
+        self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        img = item[self.img_key]
+        if not img.mode == "RGB":
+            img = img.convert("RGB")
+        img = np.array(img).astype(np.uint8)
+        image = self.preprocessor(image=img)["image"]
+        image = (image / 127.5 - 1.0).astype(np.float32)
+        image = image.transpose(2, 0, 1)
+        label = item[self.label_key]
+        return [0, image, label]
 
 class FFHQDataset(Dataset):
     def __init__(self, data_root, image_size, max_words=30, n_class=1000, partition="train", device="cpu"):
@@ -188,7 +207,7 @@ def configure_optimizers(model, args):
     optimizer = torch.optim.AdamW(optim_groups, lr=args.lr, betas=(0.9, 0.95))
     return optimizer
 
-
+from hiq.cv_torch import *
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="VQGAN")
 
@@ -210,6 +229,7 @@ if __name__ == '__main__':
     parser.set_defaults(pin_mem=True)
 
     # distributed training parameters
+    parser.add_argument("--distributed", default=1, type=int)
     parser.add_argument("--world_size", default=1, type=int, help="number of distributed processes")
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--dist_on_itp", action="store_true")
@@ -280,13 +300,18 @@ if __name__ == '__main__':
     cudnn.benchmark = True
     if args.dataset == "imagenet":
         print("ImageNet Dataset")
-
-        dataset_train = ImageNetDataset(
+        dl = get_cv_dataset(path=DS_PATH_IMAGENET1K,
+                            image_size=args.image_size,
+                            batch_size=args.batch_size,
+                            return_loader=False,
+                            datasetclass=MyDSINE1KForGPT)
+        dataset_train, dataset_val = dl['train'], dl['validation']
+        '''dataset_train = ImageNetDataset(
             data_root=args.imagenet_path, image_size=args.image_size, n_class=args.n_class, partition="train", device=device
         )
         dataset_val = ImageNetDataset(
             data_root=args.imagenet_path, image_size=args.image_size, n_class=args.n_class, partition="val", device=device
-        )
+        )'''
     else:
         print("FFHQ Dataset")
         dataset_train = FFHQDataset(
@@ -331,16 +356,16 @@ if __name__ == '__main__':
         pass
     else:
         model = VQGANTransformer(args).to(device=args.device)
-    #optimizer = configure_optimizers(model, args)
+    optimizer = configure_optimizers(model, args)
     #for param in model.vqgan.parameters():
     #    param.requires_grad = False
 
-    model_engine, optimizer, _, _ = deepspeed.initialize(args=args,
+    '''model_engine, optimizer, _, _ = deepspeed.initialize(args=args,
                                                      model=model,
                                                      #optimizer=optimizer,
                                                      model_parameters=model.transformer.parameters())
-    deepspeed.init_distributed()
-
+    deepspeed.init_distributed()'''
+    model_engine = model
     for name, param in model.vqgan.named_parameters():
         param.data = param.data.float()
         param.requires_grad = False
@@ -373,7 +398,7 @@ if __name__ == '__main__':
     ###
 
     for epoch in range(start_epoch, args.epochs):
-        print("Strat Epeoch %d"%(epoch))
+        print("Start Epoch %d"%(epoch))
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
             data_loader_val.sampler.set_epoch(epoch)
