@@ -108,10 +108,10 @@ if __name__ == '__main__':
     ckpt = {k.replace('module.', ''): v for k, v in state_dict.items()}
     model = VQGANTransformer(args).to(device=args.device)
     model.load_state_dict(ckpt, strict=True)
+    print_model(model)
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model,
                                                           device_ids=[args.gpu])  # , find_unused_parameters=True)
-        print_model(model)
     model = model.module
     model.eval()
     count = 0
