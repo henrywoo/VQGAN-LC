@@ -1,5 +1,6 @@
 import os
 
+import hiq
 import numpy as np
 from tqdm import tqdm
 import argparse
@@ -170,6 +171,16 @@ if __name__ == '__main__':
 
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
+
+    from huggingface_hub import hf_hub_download
+
+    repo_id = "wufuheng/VQ"
+    if not os.path.exists(args.local_embedding_path):
+        hiq.ensure_folder(args.local_embedding_path)
+        hf_hub_download(repo_id, args.local_embedding_path)
+    if not os.path.exists(args.stage_1_ckpt):
+        hiq.ensure_folder(args.stage_1_ckpt)
+        hf_hub_download(repo_id, args.stage_1_ckpt)
 
     misc.init_distributed_mode(args)
     device = torch.device(args.device)
