@@ -149,20 +149,35 @@ class GPT(nn.Module):
             module.weight.data.fill_(1.0)
 
     def forward(self, idx, embeddings=None):
-        token_embeddings = self.tok_emb(idx)  # each index maps to a (learnable) vector
+        # 打印索引的最大值和最小值
+        #print(f"idx max value: {idx.max().item()}, idx min value: {idx.min().item()}")
 
-        if embeddings is not None:  # prepend explicit embeddings
+        token_embeddings = self.tok_emb(idx)  # 每个索引映射到一个（可学习的）向量
+        #print(f"token_embeddings initial shape: {token_embeddings.shape}")
+
+        if embeddings is not None:  # 预先添加显式嵌入
             token_embeddings = torch.cat((embeddings, token_embeddings), dim=1)
+            #print(f"token_embeddings after concatenation shape: {token_embeddings.shape}")
 
         t = token_embeddings.shape[1]
-        assert t <= self.block_size, "Cannot forward, model block size is exhausted."
-        position_embeddings = self.pos_emb[:, :t, :]  # each position maps to a (learnable) vector
-        x = self.drop(token_embeddings + position_embeddings)
+        assert t <= self.block_size, "无法前向传播，模型块大小已耗尽。"
+
+        # 调整位置嵌入的形状，使其与 token_embeddings 匹配
+        position_embeddings = self.pos_emb[:, :t, :].expand_as(token_embeddings)
+        #print(f"position_embeddings shape: {position_embeddings.shape}")
+
+        # 确保两者形状一致
+        #assert token_embeddings.shape == position_embeddings.shape, \
+        #    f"Shape mismatch: token_embeddings shape: {token_embeddings.shape}, position_embeddings shape: {position_embeddings.shape}"
+
+        x_ = token_embeddings + position_embeddings
+        x = self.drop(x_)
         x = self.blocks(x)
         x = self.ln_f(x)
         logits = self.head(x)
-
         return logits, None
+
+
 
 
 

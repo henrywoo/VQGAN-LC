@@ -83,7 +83,7 @@ class VQGANTransformer(nn.Module):
     
     @torch.no_grad()
     def z_to_image(self, indices, p1=16, p2=16):
-
+        """convert the quantized latent vectors (indices) back into images."""
         ###
         if self.args.use_cblinear == 1:
             vision_tok_embeddings_weight = self.vqgan.codebook_projection(self.vqgan.tok_embeddings.weight)
@@ -96,12 +96,12 @@ class VQGANTransformer(nn.Module):
         return image
 
     def forward(self, x, c_indices=None):
-
+        """ calculating the loss based on the input images and the optional conditioning indices."""
         with torch.no_grad():
             _, indices = self.encode_to_z(x)
     
         sos_tokens = torch.ones(x.shape[0], 1) * self.sos_token
-        sos_tokens = sos_tokens.long().to("cuda")
+        sos_tokens = sos_tokens.long().to(x.device)
 
         if self.training and self.pkeep < 1.0:
             mask = torch.bernoulli(self.pkeep * torch.ones(indices.shape, device=indices.device))
@@ -111,7 +111,7 @@ class VQGANTransformer(nn.Module):
         else:
             new_indices = indices
 
-        if not c_indices is None:
+        if c_indices is not None:
             new_indices = torch.cat((c_indices, new_indices), dim=1)
             logits, _ = self.transformer(new_indices[:, :-1])
         else:
@@ -122,7 +122,10 @@ class VQGANTransformer(nn.Module):
         if self.args.label_smooth == 1:
             loss = self.loss_computer(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
         else:
-            loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+            x = logits.reshape(-1, logits.size(-1))
+            y = target.reshape(-1)
+            #print(x.shape, y.shape)
+            loss = F.cross_entropy(x, y)
         
         return loss
 
@@ -135,6 +138,10 @@ class VQGANTransformer(nn.Module):
     #cleanFID
     @torch.no_grad()
     def sample(self, x, c, steps, temperature=1.0, top_k=100):
+        """
+        to generate new sequences of tokens (or images) based on the input condition c. It does this by repeatedly
+        predicting the next token and appending it to the sequence, thus generating a sequence step-by-step.
+        """
         self.transformer.eval()
         if x is not None:
             x = torch.cat((c, x), dim=1)
@@ -190,8 +197,59 @@ class VQGANTransformer(nn.Module):
 
         return log, torch.concat((x, x_rec, half_sample, full_sample))
 
+if __name__ == '__main__':
+    """
+    在推理（推测）阶段，不再需要 `forward` 方法，因为推理的目标是生成或重构数据，而不是计算损失。以下是推理阶段与训练阶段的主要区别，以及为什么
+    推理时不需要 `forward` 方法：
 
-
+    ### 训练阶段
+    
+    - **目标**：通过计算损失并进行反向传播来优化模型参数。
+    - **`forward` 方法**：用于计算输入数据（如图像）与目标数据之间的损失。
+      - 编码输入图像为潜在表示和索引。
+      - 生成预测并计算损失（如交叉熵或标签平滑）。
+      - 反向传播以更新模型权重。
+    
+    ### 推理阶段
+    
+    - **目标**：生成或重构数据，如生成新图像或文本序列，而不是计算损失。
+    - **不需要 `forward` 方法**：推理阶段不涉及损失计算和参数更新，因此 `forward` 方法在此阶段不再使用。
+      - 生成新序列（如 `sample` 方法）。
+      - 将潜在表示转换回图像（如 `z_to_image` 方法）。
+    
+    ### 方法在推理阶段的作用
+    
+    1. **`sample` 方法**：
+       - 生成新的序列（如图像或文本）从条件输入开始。
+       - 通过递归地预测下一个元素并将其附加到序列中，逐步生成完整的序列。
+    
+    2. **`z_to_image` 方法**：
+       - 将潜在表示（如量化后的索引）转换回图像。
+       - 这涉及将嵌入索引转换为量化向量，然后使用解码器将其转换回图像。
+    
+    ### 具体使用示例
+    
+    1. **生成新图像**：
+    
+       ```python
+       # Example: Generate a new image sequence
+       generated_indices = model.sample(start_indices, conditioning_indices, steps=256)
+       generated_image = model.z_to_image(generated_indices)
+       ```
+    
+    2. **重构图像**：
+    
+       ```python
+       # Example: Reconstruct an image from its latent representation
+       _, indices = model.encode_to_z(input_image)
+       reconstructed_image = model.z_to_image(indices)
+       ```
+    
+    ### 总结
+    
+    在推理阶段，不再需要 `forward` 方法，因为我们不再进行损失计算和模型参数更新。取而代之的是使用 `sample` 方法来生成新的序列，使用
+     `z_to_image` 方法将潜在表示转换回图像。推理的核心是生成或重构，而不是优化模型，因此不涉及 `forward` 方法。
+    """
 
 
 

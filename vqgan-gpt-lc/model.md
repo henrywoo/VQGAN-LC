@@ -1,4 +1,27 @@
-GPT:
+# VQGANTransformer for Generation:
+
+There are two submodels:
+
+
+## GPT
+
+```python
+🌳 GPT<all params:509_422_592>
+├── 💠 Embedding(tok_emb),💠 Linear(head)<🦜:103424000x2>|weight[101000,1024]
+├── Sequential(blocks)
+│   └── 💠 Block(0-23)<🦜:12596224x24>
+│       ┣━━ 💠 LayerNorm(ln1,ln2)<🦜:2048x2>|weight[1024]|bias[1024]
+│       ┣━━ CausalSelfAttention(attn)
+│       ┃   ┗━━ 💠 Linear(key,query,value,proj)<🦜:1049600x4>|weight[1024,1024]|bias[1024]
+│       ┗━━ Sequential(mlp)
+│           ┣━━ Linear(0)|weight[4096,1024]|bias[4096]
+│           ┗━━ Linear(2)|weight[1024,4096]|bias[1024]
+└── LayerNorm(ln_f)|weight[1024]|bias[1024]
+```
+
+## VQGAN
+
+## Total 
 
 ```python
 🌳 VQGANTransformer<trainable_params:581844436,all_params:673360596,percentage:86.40904%>

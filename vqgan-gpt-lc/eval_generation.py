@@ -108,7 +108,9 @@ if __name__ == '__main__':
     ckpt = {k.replace('module.', ''): v for k, v in state_dict.items()}
     model = VQGANTransformer(args).to(device=args.device)
     model.load_state_dict(ckpt, strict=True)
-    print_model(model)
+    #print_model(model)
+    print_model(model.vqgan)
+    print_model(model.transformer)
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model,
                                                           device_ids=[args.gpu])  # , find_unused_parameters=True)
@@ -153,6 +155,7 @@ if __name__ == '__main__':
                 plt.imsave(t, np.uint8(x_generation[b].detach().cpu().numpy().transpose(1, 2, 0) * 255))
     np.save(os.path.join(args.output_dir, "token_freq.npy"), np.array(token_freq.cpu().data))
 
+    '''
     from cleanfid import fid
 
     fid_value = fid.compute_fid(generation_save_dir, imagenet_path + "/train", mode="clean")
@@ -161,3 +164,4 @@ if __name__ == '__main__':
     with open(os.path.join(args.output_dir, "recons.csv"), 'a') as f:
         f.write("FID, Effective_Tokens \n")
         f.write("%.4f, %d \n" % (fid_value, efficient_token))
+'''

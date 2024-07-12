@@ -118,7 +118,7 @@ torchrun --nproc_per_node 1 training_gpt.py \
     --image_size 256 \
     --epochs 100 \
     --lr 4.5e-4 \
-    --n_class 4 \
+    --n_class 1000 \
     --imagenet_path $imagenet_path \
     --num_workers 16 \
     --vq_config_path vqgan_configs/vq-f16.yaml \
