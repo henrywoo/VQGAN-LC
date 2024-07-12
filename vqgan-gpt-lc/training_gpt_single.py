@@ -188,11 +188,11 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     np.random.seed(seed)
     cudnn.benchmark = True
-    dl = get_cv_dataset(path=DS_PATH_DOGFOOD_3K if args.dataset == "imagenet" else DS_PATH_FFHQ256_70K,  # DS_PATH_IMAGENET1K
+    dl = get_cv_dataset(path=DS_PATH_IMAGENET1K if args.dataset == "imagenet" else DS_PATH_FFHQ256_70K,
                         image_size=args.image_size,
                         batch_size=args.batch_size,
                         return_loader=False,
-                        max_num=500,
+                        max_num=500000000000000,
                         datasetclass=MyDSForGPT)
     dataset_train, dataset_val = dl['train'], dl['test'] if 'test' in dl else None
     num_tasks = misc.get_world_size()
