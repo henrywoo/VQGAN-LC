@@ -49,14 +49,13 @@ class LabelSmoothing(nn.Module):
         return loss.mean()
 
 
-class MyDSForGPT_INE1K(ImageLabelDataSet):
+class MyDSForGPT(ImageLabelDataSet):
     def __init__(self, dataset, transform=None, return_type='pair', split='train', image_size=224, convert_rgb=True,
-                 img_key=None):
-        super().__init__(dataset, transform, return_type, split, image_size, convert_rgb, img_key)
+                 img_key=None, max_num=100000):
+        super().__init__(dataset, transform, return_type, split, image_size, convert_rgb, img_key, max_num=max_num)
         self.rescaler = albumentations.SmallestMaxSize(max_size=image_size)
         self.cropper = albumentations.RandomCrop(height=image_size, width=image_size)
         self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
-
     def __getitem__(self, idx):
         item = self.dataset[idx]
         img = item[self.img_key]
@@ -66,78 +65,8 @@ class MyDSForGPT_INE1K(ImageLabelDataSet):
         image = self.preprocessor(image=img)["image"]
         image = (image / 127.5 - 1.0).astype(np.float32)
         image = image.transpose(2, 0, 1)
-        label = item[self.label_key]
-        return [0, image, label]
-
-class MyDSForGPT_FFHQ25670K(ImageLabelDataSet):
-    def __init__(self, dataset, transform=None, return_type='pair', split='train', image_size=224, convert_rgb=True,
-                 img_key=None):
-        super().__init__(dataset, transform, return_type, split, image_size, convert_rgb, img_key)
-        self.rescaler = albumentations.SmallestMaxSize(max_size=image_size)
-        self.cropper = albumentations.RandomCrop(height=image_size, width=image_size)
-        self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
-
-    def __getitem__(self, idx):
-        item = self.dataset[idx]
-        img = item[self.img_key]
-        if not img.mode == "RGB":
-            img = img.convert("RGB")
-        img = np.array(img).astype(np.uint8)
-        image = self.preprocessor(image=img)["image"]
-        image = (image / 127.5 - 1.0).astype(np.float32)
-        image = image.transpose(2, 0, 1)
-        return [-1, image, -1]
-
-class FFHQDataset(Dataset):
-    def __init__(self, data_root, image_size, max_words=30, n_class=1000, partition="train", device="cpu"):
-
-        self.max_words = max_words
-        self.device = device
-        self.image_size = image_size
-
-        self.data_root = data_root
-
-        self.rescaler = albumentations.SmallestMaxSize(max_size=image_size)
-        self.cropper = albumentations.RandomCrop(height=image_size, width=image_size)
-        self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
-
-        self.token_nums = [1, 4, 16, 64, 256, 256]
-
-        self.partition = partition
-
-        self.clip_mean = torch.from_numpy(np.array([0.48145466, 0.4578275, 0.40821073])).unsqueeze(0).unsqueeze(
-            -1).unsqueeze(-1).float()  # .to(args.device).float()
-        self.clip_std = torch.from_numpy(np.array([0.26862954, 0.26130258, 0.27577711])).unsqueeze(0).unsqueeze(
-            -1).unsqueeze(-1).float()  # .to(args.device).float()
-
-        self.image_ids = []
-        self.class_labels = []
-
-        # files = os.listdir(data_root + "/" + partition)
-        # for file in files:
-        #    self.image_ids.append(partition + "/" + file)
-
-        with open("ffhq_split/" + partition + ".txt") as f:
-            for line in f.readlines():
-                image_id = line.strip('\n')
-                self.image_ids.append("all/" + image_id)
-
-    def __len__(self):
-        return len(self.image_ids)
-
-    def __getitem__(self, index):
-
-        image_ids = self.image_ids[index]
-        ###
-        image = Image.open(os.path.join(self.data_root, image_ids))
-        if not image.mode == "RGB":
-            image = image.convert("RGB")
-        image = np.array(image).astype(np.uint8)
-        image = self.preprocessor(image=image)["image"]
-        image = (image / 127.5 - 1.0).astype(np.float32)
-        image = image.transpose(2, 0, 1)
-
-        return [image_ids, image, 0]
+        label = item[self.label_key] if self.label_key in item else -1
+        return [-1, image, label]
 
 
 def configure_optimizers(model, args):
@@ -248,29 +177,13 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     np.random.seed(seed)
     cudnn.benchmark = True
-    if args.dataset == "imagenet":
-        dl = get_cv_dataset(path=DS_PATH_DOGFOOD_3K,  # DS_PATH_IMAGENET1K
-                            image_size=args.image_size,
-                            batch_size=args.batch_size,
-                            return_loader=False,
-                            datasetclass=MyDSForGPT_INE1K)
-        dataset_train, dataset_val = dl['train'], dl['test']
-    else:
-        dl = get_cv_dataset(path=DS_PATH_FFHQ256_70K,
-                            image_size=args.image_size,
-                            batch_size=args.batch_size,
-                            return_loader=False,
-                            datasetclass=MyDSForGPT_FFHQ25670K)
-        dataset_train, dataset_val = dl['train'], None
-        '''dataset_train = FFHQDataset(
-            data_root=args.imagenet_path, image_size=args.image_size, n_class=args.n_class, partition="train",
-            device=device
-        )
-        dataset_val = FFHQDataset(
-            data_root=args.imagenet_path, image_size=args.image_size, n_class=args.n_class, partition="val",
-            device=device
-        )'''
-
+    dl = get_cv_dataset(path=DS_PATH_DOGFOOD_3K if args.dataset == "imagenet" else DS_PATH_FFHQ256_70K,  # DS_PATH_IMAGENET1K
+                        image_size=args.image_size,
+                        batch_size=args.batch_size,
+                        return_loader=False,
+                        max_num=500,
+                        datasetclass=MyDSForGPT)
+    dataset_train, dataset_val = dl['train'], dl['test'] if 'test' in dl else None
     num_tasks = misc.get_world_size()
     global_rank = misc.get_rank()
     sampler_train = torch.utils.data.DistributedSampler(
@@ -324,7 +237,7 @@ if __name__ == '__main__':
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
-        print(f"Loading Checkpoint {checkpoint} from epoch {start_epoch}")
+        print(f"Loading Checkpoint {str(p)} from epoch {start_epoch}")
 
     for epoch in range(start_epoch, args.epochs):
         print(f"epoch: {epoch}, GPU: {total_gpu_memory_mb_nvml() // 1024}GB")
