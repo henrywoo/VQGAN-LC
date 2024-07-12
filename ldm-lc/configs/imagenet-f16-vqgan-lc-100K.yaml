@@ -41,8 +41,8 @@ model:
       params:
         embed_dim: 8
         n_vision_words: 100000
-        local_embedding_path: $CODEBOOK_PATH_100K
-        ckpt_path:  $VQGAN_LC_PATH
+        local_embedding_path: mbin/codebook-100K.pth
+        ckpt_path:  mbin/vqgan-lc-100K-f16-dim8.pth
         tuning_codebook: 0
         use_cblinear: 1
         ddconfig:

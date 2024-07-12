@@ -20,7 +20,7 @@ from tokenizer.models_vq import VQModel
 import yaml
 import os
 import numpy as np
-import cv2
+from hiq import print_model
 from omegaconf import OmegaConf
 import yaml
 
@@ -57,18 +57,18 @@ def main(mode, args):
     #    in_channels=args.embed_dim
     #).to(device)
 
-    model = SiT_models[args.model](
+    sit_model = SiT_models[args.model]
+    model = sit_model(
         input_size=args.latent_size,
         num_classes=args.num_classes,
         in_channels=args.embed_dim
     ).to(device)
-
-    print(model)
     # Auto-download a pre-trained model or load a custom SiT checkpoint from train.py:
     ckpt_path = args.ckpt
     state_dict = find_model(ckpt_path)
     model.load_state_dict(state_dict)
     model.eval()  # important!
+    print_model(model)
     transport = create_transport(
         args.path_type,
         args.prediction,
@@ -112,7 +112,7 @@ def main(mode, args):
     config = load_config(args.vq_config_path, display=True)
     vae = VQModel(**config.model.params, tuning_codebook=args.tuning_codebook, n_vision_words=args.n_vision_words, local_embedding_path=args.local_embedding_path, use_cblinear=args.use_cblinear)
     vae = vae.to(device)
-    sd = torch.load(os.path.join(args.vq_ckpt_path), map_location="cpu")["state_dict"]
+    sd = torch.load(args.vq_ckpt_path, map_location="cpu")["state_dict"]
     missing, unexpected = vae.load_state_dict(sd, strict=False)
     vae = vae.eval()
     print(missing, unexpected)
@@ -120,14 +120,14 @@ def main(mode, args):
 
     
     count = 0
-    n_sample = 50
+    n_sample = 5
     if not os.path.exists(os.path.join(args.save_dir, "vis_dir")):
         os.makedirs(os.path.join(args.save_dir, "vis_dir"))
     if not os.path.exists(os.path.join(args.save_dir, "save_dir")):
         os.makedirs(os.path.join(args.save_dir, "save_dir"))
     token_freq = torch.zeros(vae.n_vision_words).to(device)
 
-    while count < 1000:
+    while count < 10:
         print(count)
         if latent_size == 16:
             class_labels = [count, count+1]
@@ -180,15 +180,17 @@ def main(mode, args):
             #cv2.imwrite(os.path.join(args.save_dir, "save_dir", "%s_%s.jpg")%(str(count), str(i)), np.uint8(np.array(samples[i].permute(1, 2, 0).cpu().data)*255.0))
     
     np.save(os.path.join(args.save_dir, "token_freq.npy"), np.array(token_freq.cpu().data))
-    from cleanfid import fid
-    #fid_value = fid.compute_fid(os.path.join(args.save_dir, "save_dir"), dataset_name="imagenet_train", mode="clean", dataset_split="custom")
-    fid_value = fid.compute_fid(os.path.join(args.save_dir, "save_dir"), args.data_path, mode="clean", dataset_split="custom")
 
-    efficient_token = np.sum(np.array(token_freq.cpu().data) != 0)
+    if os.path.exists(args.data_path):
+        from cleanfid import fid
+        #fid_value = fid.compute_fid(os.path.join(args.save_dir, "save_dir"), dataset_name="imagenet_train", mode="clean", dataset_split="custom")
+        fid_value = fid.compute_fid(os.path.join(args.save_dir, "save_dir"), args.data_path, mode="clean", dataset_split="custom")
 
-    with open(os.path.join(args.save_dir, "recons.csv"), 'a') as f:
-        f.write("FID, Effective_Tokens \n")
-        f.write("%.4f, %d \n"%(fid_value, efficient_token))
+        efficient_token = np.sum(np.array(token_freq.cpu().data) != 0)
+
+        with open(os.path.join(args.save_dir, "recons.csv"), 'a') as f:
+            f.write("FID, Effective_Tokens \n")
+            f.write("%.4f, %d \n"%(fid_value, efficient_token))
 
 
 if __name__ == "__main__":
@@ -222,7 +224,7 @@ if __name__ == "__main__":
     parser.add_argument("--local_embedding_path", type=str, default="cluster_codebook_1000cls_100000.pth")
     parser.add_argument("--tuning_codebook", type=int, default=0)
     parser.add_argument("--use_cblinear", type=int, default=1)
-    parser.add_argument("--vq_config_path", type=str, default="vqgan_configs/vq-f16.yaml")
+    parser.add_argument("--vq_config_path", type=str, default="sit-lc/vqgan_configs/vq-f16.yaml")
     parser.add_argument("--save_dir", type=str, default="test_logs/debug")
     #####
 

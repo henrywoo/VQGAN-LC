@@ -54,4 +54,4 @@ def get_features(repo_id = "wufuheng/fid_features", filename = "512_ffhq.npz"):
 if __name__ == "__main__":
     #f = get_features()
     #print(f.shape)
-    upload(path_or_fileobj="mbin/vqgan-lc-100K-f16-dim8.pth", path_in_repo="mbin/vqgan-lc-100K-f16-dim8.pth")
+    upload(path_or_fileobj="mbin/sit-lc-100K-f16.pth", path_in_repo="mbin/sit-lc-100K-f16.pth")

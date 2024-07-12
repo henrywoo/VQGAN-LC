@@ -149,7 +149,8 @@ python vqgan-gpt-lc/training_gpt_single.py --batch_size 14 --image_size 256 --ep
 python vqgan-gpt-lc/training_gpt_single.py --batch_size 14 --image_size 256 --epochs 100 --lr 4.5e-4 --n_class 1000 \
   --num_workers 4 --vq_config_path vqgan-gpt-lc/vqgan_configs/vq-f16.yaml --local_embedding_path \
   mbin/codebook-100K.pth --stage_1_ckpt mbin/vqgan-lc-100K-f16-dim8.pth --n_vision_words 100000 \
-  --tuning_codebook 0 --use_cblinear 1 --embed_dim 8 --output_dir "train_logs_gpt/gpt_lc_100K" --gpt_type "small" --dataset ffhq
+  --tuning_codebook 0 --use_cblinear 1 --embed_dim 8 --output_dir "train_logs_gpt/gpt_lc_100K" --gpt_type "small" \
+   --dataset ffhq
 ```
 
 We also provide the checkpoint of GPT-LC on [Google Drive](https://drive.google.com/drive/folders/1DDHYpEKJUeVePIPzLf72DbUZ7Qa9x9yx?usp=sharing).
@@ -190,7 +191,7 @@ torchrun --nproc_per_node 1 eval_generation.py \
 
 #### LDM Training
 
-Setting the pathes of ImageNet1K dataset, VQGAN-LC checkpoint and initialized codebook in "config/imagenet-f16-vqgan-lc-100K.yaml". 
+Setting the path of ImageNet1K dataset, VQGAN-LC checkpoint and initialized codebook in "config/imagenet-f16-vqgan-lc-100K.yaml". 
 
 Training LDM with VQGAN-LC tokenizer (LDM-LC) for class-conditional image generation:
 
@@ -221,6 +222,13 @@ python run_evaluations.py \
             --ckpt_path $ldm_lc_path \
             --config_path "configs/imagenet-f16-vqgan-lc-100K.yaml" \
             --save_path "test_logs/ldm_lc_100K_f16"
+```
+
+- Single GPU
+
+```
+--times 2 --n_sample 25 --scale 1.6 --edim 8 --resolution 16 --ckpt_path mbin/ldm-lc-100K-f16.pth \
+--config_path ldm-lc/configs/imagenet-f16-vqgan-lc-100K.yaml --save_path "log_eval_ldm/ldm_lc_100K_f16"
 ```
 
 
@@ -330,7 +338,15 @@ python evaluation.py ODE --model SiT-XL/2 \
                          --use_cblinear 1 \
                          --cfg-scale 8 \
                          --save_dir "test_logs/sit_lc_100K_f16"
+```
 
+- Single GPU
+
+```
+python sit-lc/evaluation.py ODE --model SiT-XL/2 --image-size 256 --num-sampling-steps 250 --seed 0 --embed_dim 8 \
+--n_vision_words 100000 --local_embedding_path mbin/codebook-100K.pth --vq_ckpt_path mbin/vqgan-lc-100K-f16-dim8.pth \
+--ckpt mbin/sit-lc-100K-f16.pth --tuning_codebook 0 --use_cblinear 1 --cfg-scale 8 \
+--save_dir "log_eval_sit/sit_lc_100K_f16" --data-path $imagenet_train_path
 ```
 
 
