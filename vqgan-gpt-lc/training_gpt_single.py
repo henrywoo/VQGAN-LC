@@ -337,7 +337,7 @@ if __name__ == '__main__':
             misc.all_reduce_mean(loss_value)
             loss_value_reduce = misc.all_reduce_mean(loss_value)
 
-            if log_writer is not None:# and cur_iter % 1000 == 0:
+            if log_writer is not None and cur_iter % 1000 == 0:
                 epoch_1000x = int(cur_iter)
                 log_writer.add_scalar("Iter/Loss", loss_value_reduce, epoch_1000x)
         
@@ -347,29 +347,28 @@ if __name__ == '__main__':
         if log_writer is not None:
             log_writer.add_scalar("Epoch/Loss", loss_value_reduce, epoch)
 
-        '''
-        metric_logger = misc.MetricLogger(delimiter="  ")
-        header = "Validation Epoch: [{}]".format(epoch)
-        for i, [image_ids, images, label_cls] in enumerate(metric_logger.log_every(data_loader_val, print_freq, header)):
-            cur_iter = len(data_loader_train) * epoch + i
-            imgs = images.to(device=args.device)
-            label_cls = label_cls.unsqueeze(-1).to(device) + args.n_vision_words
-            with torch.no_grad():
-                if args.class_condition == 1:
-                    loss = model_engine(imgs, label_cls)
-                else:
-                    loss = model(imgs)
-            loss_value = loss.item()
-            metric_logger.update(val_loss=loss_value)
-            misc.all_reduce_mean(loss_value)
-            loss_value_reduce = misc.all_reduce_mean(loss_value)
+        if epoch%5 ==0:
+            #metric_logger = misc.MetricLogger(delimiter="  ")
+            header = "Validation Epoch: [{}]".format(epoch)
+            for i, [image_ids, images, label_cls] in enumerate(metric_logger.log_every(data_loader_val, print_freq, header)):
+                cur_iter = len(data_loader_train) * epoch + i
+                imgs = images.to(device=args.device)
+                label_cls = label_cls.unsqueeze(-1).to(device) + args.n_vision_words
+                with torch.no_grad():
+                    if args.class_condition == 1:
+                        loss = model_engine(imgs, label_cls)
+                    else:
+                        loss = model(imgs)
+                loss_value = loss.item()
+                metric_logger.update(val_loss=loss_value)
+                misc.all_reduce_mean(loss_value)
+                loss_value_reduce = misc.all_reduce_mean(loss_value)
 
-        if log_writer is not None:
-            log_writer.add_scalar("Epoch/Val_Loss", loss_value_reduce, epoch)
+            if log_writer is not None:
+                log_writer.add_scalar("Epoch/Val_Loss", loss_value_reduce, epoch)
 
-        metric_logger.synchronize_between_processes()
-        print("Validation Averaged stats:", metric_logger)
-        '''
+            metric_logger.synchronize_between_processes()
+            print("Validation Averaged stats:", metric_logger)
 
         client_sd = {"epoch": epoch, "model_state_dict": model.state_dict(),
                      "optimizer_state_dict": optimizer.state_dict()}
