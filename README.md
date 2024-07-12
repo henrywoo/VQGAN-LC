@@ -131,9 +131,16 @@ torchrun --nproc_per_node 1 training_gpt.py \
     --output_dir "train_logs_gpt/gpt_lc_100K" \
     --gpt_type "small" \
     --deepspeed \
-    --deepspeed_config "vqgan-gpt-lc/config/deepspeed_gpt_zero2_small.json" \
+    --deepspeed_config "vqgan-gpt-lc/config/deepspeed_gpt_zero2_small.json"
+```
 
+- Single GPU RTX 4090
 
+```
+python vqgan-gpt-lc/training_gpt_single.py --batch_size 14 --image_size 256 --epochs 100 --lr 4.5e-4 --n_class 1000 \
+  --num_workers 4 --vq_config_path vqgan-gpt-lc/vqgan_configs/vq-f16.yaml --local_embedding_path \
+  mbin/codebook-100K.pth --stage_1_ckpt mbin/vqgan-lc-100K-f16-dim8.pth --n_vision_words 100000 \
+  --tuning_codebook 0 --use_cblinear 1 --embed_dim 8 --output_dir "train_logs_gpt/gpt_lc_100K" --gpt_type "small"
 ```
 
 We also provide the checkpoint of GPT-LC on [Google Drive](https://drive.google.com/drive/folders/1DDHYpEKJUeVePIPzLf72DbUZ7Qa9x9yx?usp=sharing).

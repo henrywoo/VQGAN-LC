@@ -1,6 +1,5 @@
 import os
 
-import hiq
 import numpy as np
 from tqdm import tqdm
 import argparse
@@ -22,7 +21,8 @@ from torchvision import utils as vutils
 from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
-from hiq.cv_torch import get_cv_dataset, DS_PATH_IMAGENET1K, DS_PATH_DOGFOOD_3K
+from hiq.cv_torch import ImageLabelDataSet, get_cv_dataset, DS_PATH_IMAGENET1K, DS_PATH_DOGFOOD_3K
+from hiq.memory import total_gpu_memory_mb_nvml
 
 class LabelSmoothing(nn.Module):
     """
@@ -46,64 +46,6 @@ class LabelSmoothing(nn.Module):
         loss = self.confidence * nll_loss + self.smoothing * smooth_loss
         return loss.mean()
 
-from common import imagenet_dict
-
-class ImageNetDataset(Dataset):
-    def __init__(self, data_root, image_size, max_words=30, n_class=1000, partition="train", device="cpu"):
-
-        self.max_words = max_words
-        self.device = device
-        self.image_size = image_size
-
-        self.data_root = data_root
-
-        self.rescaler = albumentations.SmallestMaxSize(max_size=self.image_size)
-        self.cropper = albumentations.CenterCrop(height=self.image_size, width=self.image_size)
-        self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
-
-        self.token_nums = [1, 4, 16, 64, 256, 256]
-
-        self.partition = partition
-
-        self.image_ids = []
-        self.class_labels = []
-        if n_class == 300:
-            select_classes = np.load("select_300_class.npy")
-        else:
-            select_classes = np.arange(0, n_class)
-
-        with open("imagenet_split/" + partition + "/class_labels.txt") as f:
-            for line in f.readlines():
-                image_id, class_label = line.strip('\n').split(",")
-                if int(class_label) in select_classes: #only select 100 class
-                    ##
-                    if partition == "train":
-                        self.image_ids.append(image_id)
-                    elif partition == "val":
-                        #self.image_ids.append(image_id)
-                        _, image_name = image_id.split("/")
-                        class_name = imagenet_dict[str(np.int64(class_label))][0]
-                        self.image_ids.append(os.path.join("val", class_name, image_name))
-                    self.class_labels.append(int(class_label))
-
-    def __len__(self):
-        return len(self.image_ids)
-
-    def __getitem__(self, index):
-
-        image_ids = self.image_ids[index]
-        image = Image.open(os.path.join(self.data_root, image_ids))
-        if not image.mode == "RGB":
-            image = image.convert("RGB")
-        image = np.array(image).astype(np.uint8)
-        image = self.preprocessor(image=image)["image"]
-        image = (image / 127.5 - 1.0).astype(np.float32)
-        image = image.transpose(2, 0, 1)
-        label = self.class_labels[index]
-
-        return [image_ids, image, label]
-
-from hiq.cv_torch import ImageLabelDataSet
 class MyDSINE1KForGPT(ImageLabelDataSet):
     def __init__(self, dataset, transform=None, return_type='pair', split='train', image_size=224, convert_rgb=True,
                  img_key=None):
@@ -221,7 +163,7 @@ if __name__ == '__main__':
     parser.set_defaults(pin_mem=True)
 
     # distributed training parameters
-    parser.add_argument("--distributed", default=1, type=int)
+    parser.add_argument("--distributed", default=0, type=int)
     parser.add_argument("--world_size", default=1, type=int, help="number of distributed processes")
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--dist_on_itp", action="store_true")
@@ -281,8 +223,6 @@ if __name__ == '__main__':
 
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
-    #args.dataset_path = r"C:\Users\dome\datasets\flowers"
-    #args.checkpoint_path = r".\checkpoints\vqgan_last_ckpt.pt"
 
     misc.init_distributed_mode(args)
     device = torch.device(args.device)
@@ -298,7 +238,6 @@ if __name__ == '__main__':
                             datasetclass=MyDSINE1KForGPT)
         dataset_train, dataset_val = dl['train'], dl['test']
     else:
-        print("FFHQ Dataset")
         dataset_train = FFHQDataset(
             data_root=args.imagenet_path, image_size=args.image_size, n_class=args.n_class, partition="train", device=device
         )
@@ -335,30 +274,15 @@ if __name__ == '__main__':
         drop_last=True,
     )
 
-    if "maskgit" in args.gpt_type:
-        #model = VQGANBidTransformer(args).to(device=args.device)
-        #loss_computer = LabelSmoothing(smoothing=0.1)
-        pass
-    else:
-        model = VQGANTransformer(args).to(device=args.device)
+    model = VQGANTransformer(args).to(device=args.device)
     optimizer = configure_optimizers(model, args)
     #for param in model.vqgan.parameters():
     #    param.requires_grad = False
-
-    '''model_engine, optimizer, _, _ = deepspeed.initialize(args=args,
-                                                     model=model,
-                                                     #optimizer=optimizer,
-                                                     model_parameters=model.transformer.parameters())
-    deepspeed.init_distributed()'''
     model_engine = model
     for name, param in model.vqgan.named_parameters():
         param.data = param.data.float()
         param.requires_grad = False
         
-    #loss_scaler = NativeScaler()
-    #model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-    #model_without_ddp = model.module
-
     if global_rank == 0 and args.output_dir is not None:
         os.makedirs(args.output_dir, exist_ok=True)
         log_writer = SummaryWriter(log_dir=args.output_dir)
@@ -366,17 +290,16 @@ if __name__ == '__main__':
         log_writer = None
 
     start_epoch = 0
-    if os.path.exists(os.path.join(args.output_dir, "gpt_checkpoint_last")):
-        checkpoint = torch.load(os.path.join(args.output_dir, "gpt_checkpoint_last"), map_location="cpu")
+    p = os.path.join(args.output_dir, "gpt_checkpoint_last")
+    if os.path.exists(p):
+        checkpoint = torch.load(p, map_location="cpu")
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
-        print("Loading Checkpoint from Epoch %d" % start_epoch)
+        print(f"Loading Checkpoint {checkpoint} from epoch {start_epoch}")
 
     for epoch in range(start_epoch, args.epochs):
-        from hiq.memory import total_gpu_memory_mb_nvml
-        print(total_gpu_memory_mb_nvml())
-        print("Start Epoch %d"%(epoch))
+        print(f"epoch: {epoch}, GPU: {total_gpu_memory_mb_nvml()//1024}GB")
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
             data_loader_val.sampler.set_epoch(epoch)
